@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>SandeshTalk – Chess & Voice</title>
+  <link rel="stylesheet" href="style.css"/>
+
+  <!-- Chess.js only — no chessboard.js needed, we draw our own board -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="auth-screen" class="screen active">
+  <div class="auth-wrap">
+    <div class="auth-logo">
+      <span class="logo-piece">♟</span>
+      <h1>SandeshTalk</h1>
+      <p>Play chess. Talk live.</p>
+    </div>
+    <div class="auth-box">
+      <div class="auth-tabs">
+        <button class="atab active" data-tab="login">Sign In</button>
+        <button class="atab" data-tab="signup">Sign Up</button>
+      </div>
+      <div id="login-tab" class="atab-body active">
+        <div class="field"><label>Email</label><input type="email" id="login-email" placeholder="you@example.com" autocomplete="email"/></div>
+        <div class="field"><label>Password</label><input type="password" id="login-password" placeholder="Password" autocomplete="current-password"/></div>
+        <button class="btn-main" id="login-btn">Sign In</button>
+        <p class="err-msg" id="login-error"></p>
+      </div>
+      <div id="signup-tab" class="atab-body">
+        <div class="field"><label>Username</label><input type="text" id="signup-username" placeholder="Pick a username" maxlength="20"/></div>
+        <div class="field"><label>Email</label><input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email"/></div>
+        <div class="field"><label>Password</label><input type="password" id="signup-password" placeholder="Min 6 characters" autocomplete="new-password"/></div>
+        <button class="btn-main" id="signup-btn">Create Account</button>
+        <p class="err-msg" id="signup-error"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LOBBY -->
+<div id="lobby-screen" class="screen">
+  <header class="nav">
+    <div class="nav-logo">♟ SandeshTalk</div>
+    <div class="nav-right">
+      <span class="status-dot"></span>
+      <span id="nav-username" class="nav-name"></span>
+      <button class="btn-outline" id="logout-btn">Logout</button>
+    </div>
+  </header>
+  <div class="lobby-body">
+    <div class="lobby-hero"><h2>Ready for a game?</h2><p>Create a room or join with a code</p></div>
+    <div class="lobby-grid">
+      <div class="lcard">
+        <div class="lcard-head"><span class="lcard-icon">⚔️</span><div><h3>Create Room</h3><p>Invite a friend with a room code</p></div></div>
+        <div class="field">
+          <label>Play as</label>
+          <div class="color-pick">
+            <button class="cpick active" data-color="white">⬜ White</button>
+            <button class="cpick" data-color="black">⬛ Black</button>
+            <button class="cpick" data-color="random">🎲 Random</button>
+          </div>
+        </div>
+        <button class="btn-main" id="create-room-btn">Create Room</button>
+        <div id="room-created-info" class="created-info hidden">
+          <p class="ci-label">Share this code with your friend</p>
+          <div class="ci-code-row">
+            <span id="created-room-code" class="ci-code"></span>
+            <button class="ci-copy" id="copy-code-btn">Copy</button>
+          </div>
+          <p class="ci-wait">⏳ Waiting for opponent…</p>
+        </div>
+      </div>
+      <div class="lcard">
+        <div class="lcard-head"><span class="lcard-icon">🚪</span><div><h3>Join Room</h3><p>Enter a code to join a friend's game</p></div></div>
+        <div class="field"><label>Room Code</label><input type="text" id="join-code" placeholder="e.g. AB3X9Z" maxlength="6" class="code-input"/></div>
+        <button class="btn-main btn-join" id="join-room-btn">Join Game</button>
+        <p class="err-msg" id="join-error"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="game-screen" class="screen">
+  <div class="gbar">
+    <button class="btn-back" id="leave-game-btn">← Leave</button>
+    <div class="gbar-center" id="game-status-bar">Starting…</div>
+    <div class="gbar-right">
+      <span class="room-tag">Room: <strong id="topbar-room-code"></strong></span>
+      <button class="btn-share-mini" id="share-btn">Share</button>
+    </div>
+  </div>
+
+  <div class="game-wrap">
+    <div class="board-col">
+      <div class="pbar">
+        <div class="pbar-left">
+          <span class="pcolor-dot" id="opp-dot"></span>
+          <span class="pname" id="opp-name">Opponent</span>
+          <span class="pconn" id="opp-conn">● offline</span>
+        </div>
+      </div>
+      <div class="captures" id="cap-opp"></div>
+
+      <!-- Custom Unicode board -->
+      <div class="board-outer">
+        <div id="chess-board" class="chess-board"></div>
+      </div>
+
+      <div class="captures" id="cap-me"></div>
+      <div class="pbar">
+        <div class="pbar-left">
+          <span class="pcolor-dot" id="my-dot"></span>
+          <span class="pname" id="my-name">You</span>
+          <span class="pconn online">● online</span>
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="abtn" id="flip-btn">↕ Flip</button>
+        <button class="abtn abtn-draw" id="draw-btn">½ Draw</button>
+        <button class="abtn abtn-resign" id="resign-btn">⚑ Resign</button>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="stabs">
+        <button class="stab active" data-panel="moves">Moves</button>
+        <button class="stab" data-panel="chat">Chat</button>
+        <button class="stab" data-panel="voice">Voice</button>
+      </div>
+      <div class="spanel active" id="panel-moves">
+        <div id="move-list" class="move-list"></div>
+        <div class="move-empty" id="move-empty">No moves yet. White goes first!</div>
+      </div>
+      <div class="spanel" id="panel-chat">
+        <div id="chat-msgs" class="chat-msgs"></div>
+        <div id="typing-ind" class="typing-ind hidden"></div>
+        <div class="chat-bar">
+          <input type="text" id="chat-input" placeholder="Say something…" maxlength="200"/>
+          <button class="send-btn" id="send-btn">Send</button>
+        </div>
+      </div>
+      <div class="spanel" id="panel-voice">
+        <div class="voice-card">
+          <div class="voice-emoji" id="voice-emoji">🎤</div>
+          <p class="voice-title" id="voice-title">Voice Chat</p>
+          <p class="voice-sub" id="voice-sub">Click to enable microphone</p>
+        </div>
+        <div class="voice-btns">
+          <button class="vbtn" id="mic-btn">🎤 Enable Mic</button>
+          <button class="vbtn vbtn-mute hidden" id="mute-btn">🔇 Mute</button>
+        </div>
+        <div id="voice-peers" class="voice-peers"></div>
+        <audio id="remote-audio" autoplay playsinline></audio>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Promotion modal -->
+<div id="promo-modal" class="modal-bg hidden">
+  <div class="modal-box">
+    <h3>Promote Pawn</h3>
+    <p>Choose a piece</p>
+    <div class="promo-row" id="promo-row"></div>
+  </div>
+</div>
+
+<!-- Draw modal -->
+<div id="draw-modal" class="modal-bg hidden">
+  <div class="modal-box">
+    <h3>Draw Offer</h3>
+    <p id="draw-msg">Opponent offers a draw.</p>
+    <div class="modal-btns">
+      <button class="btn-main" id="accept-draw">Accept</button>
+      <button class="btn-outline" id="decline-draw">Decline</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
